@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Document</title>
+</head>
+<body>
+  <div id="map_from">
+    <div class="control-group span18" style="margin-left: -4px;margin-bottom: 4px; width:100%;border: 1px solid #ccc;" id="map">
+    </div>
+  </div>
+  <div class="box-but-ton">
+    <button οnclick="remove_overlay()">删除围栏</button>
+    <button οnclick="subUpdate()">确定</button>
+  </div>
+</body>
+</html>
+<script src="http://api.map.baidu.com/api?v=2.0&ak=5jnvDknK1AN8PMnI5GPDbfeDf56PuGio"></script>
+<!--加载鼠标绘制工具-->
+<script type="text/javascript" src="http://api.map.baidu.com/library/DrawingManager/1.4/src/DrawingManager_min.js"></script>
+<link rel="stylesheet" href="http://api.map.baidu.com/library/DrawingManager/1.4/src/DrawingManager_min.css" />
+<!--加载检索信息窗口-->
+<script type="text/javascript" src="http://api.map.baidu.com/library/SearchInfoWindow/1.4/src/SearchInfoWindow_min.js"></script>
+<script>
+  var wmp_city = '<?php echo $wmp_region_name;?>';   //城市
+  var wmp_id = '<?php echo $wmp_id;?>';   //记录id
+  // 百度地图API功能
+  var map = new BMap.Map('map');
+  map.centerAndZoom(wmp_city, 13);
+  map.enableScrollWheelZoom(); var type = '';
+  //鼠标绘制完成回调方法   获取各个点的经纬度
+  var overlays = []; var resData = [];
+  var overlaycomplete = function (e) {
+    type = 2;
+    overlays.push(e.overlay);
+    e.overlay.enableEditing();
+    var path = e.overlay.getPath();//Array<Point> 返回多边型的点数组
+    for (var i = 0; i < path.length; i++) {
+      resData.push(path[i].lng + "," + path[i].lat);  //获取绘制地图所有的点 保存到数据库 可以回填  
+    }
+  };
+  var res = '<?php echo $all_points;?>';
+  var result = $.parseJSON(res);
+  //展示电子围栏已画地图   当前记录的电子围栏
+  if (result['current'][0] != null) {
+    type = 1;
+    var arr1 = result['current'][0].split('|');
+    var item_point1 = ''; var map_points1 = [];
+    for (var a = 0; a < arr1.length; a++) {
+      item_point1 = arr1[a].split(',');
+      map_points1.push(new BMap.Point(item_point1[0], item_point1[1]));
+    }
+    var polygon1 = new BMap.Polygon(map_points1, { strokeColor: "black", strokeWeight: 2, strokeOpacity: 1, fillColor: 'yellow', enableEditing: true })//创建多边形
+    map.addOverlay(polygon1);
+  } else {
+    //实例化鼠标绘制工具
+    var drawingManager = new BMapLib.DrawingManager(map, {
+      isOpen: false, //是否开启绘制模式
+      enableDrawingTool: true, //是否显示工具栏
+      drawingToolOptions: {
+        anchor: BMAP_ANCHOR_TOP_RIGHT, //位置
+        offset: new BMap.Size(5, 5), //偏离值
+        scale: 0.8 //工具栏缩放比例
+      },
+      circleOptions: styleOptions, //圆的样式
+      polylineOptions: styleOptions, //线的样式
+      polygonOptions: styleOptions, //多边形的样式
+      rectangleOptions: styleOptions //矩形的样式
+    });
+    //添加鼠标绘制工具监听事件，用于获取绘制结果
+    drawingManager.addEventListener('overlaycomplete', overlaycomplete);
+  }
+  //当前城市其他电子围栏
+  if (result['other'] != undefined) {
+    var all_points = result['other'];
+    for (var y = 0; y < result['other'].length; y++) {
+      var arr = all_points[y].split('|');
+      var item_point = ''; var map_points = [];
+      for (var i = 0; i < arr.length; i++) {
+        item_point = arr[i].split(',');
+        map_points.push(new BMap.Point(item_point[0], item_point[1]));
+      }
+      var polygon = new BMap.Polygon(map_points, { strokeColor: "black", strokeWeight: 2, strokeOpacity: 1, fillColor: 'red' })//创建多边形
+      map.addOverlay(polygon);           //增加多边形
+      polygon.disableMassClear();   //禁止覆盖物在map.clearOverlays方法中被清除
+    }
+  }
+
+  var styleOptions = {
+    strokeColor: "blue",    //边线颜色。
+    fillColor: "",      //填充颜色。当参数为空时，圆形将没有填充效果。
+    strokeWeight: 3,       //边线的宽度，以像素为单位。
+    strokeOpacity: 0.8,       //边线透明度，取值范围0 - 1。
+    fillOpacity: 0.6,      //填充的透明度，取值范围0 - 1。
+    strokeStyle: 'solid' //边线的样式，solid或dashed。
+  }
+
+  //新建或更新地图数据
+  function subUpdate() {
+    var url = C.getUrl("work-map", "enclosure", 'wmp_id=' + wmp_id);
+    if (type == '') {
+      alert('请先编辑地图围栏');
+      return;
+    }
+    //编辑后获取到对象的经纬度
+    if (resData == '' && type == 1) {
+      var arr_path = polygon1.getPath();
+      for (var i = 0; i < arr_path.length; i++) {
+        resData.push(arr_path[i].lng + "," + arr_path[i].lat);
+      }
+    }
+    var data = {
+      resData: resData
+    };
+    $.post(url, data, function (data) {
+      var res = jQuery.parseJSON(data);
+      if (res.code == 1) {
+        alert('操作失败');
+      } else {
+        location.reload();
+      }
+    });
+
+  }
+  //清除覆盖物
+  function remove_overlay() {
+    map.clearOverlays();
+    //实例化鼠标绘制工具
+    var drawingManager = new BMapLib.DrawingManager(map, {
+      isOpen: false, //是否开启绘制模式
+      enableDrawingTool: true, //是否显示工具栏
+      drawingToolOptions: {
+        anchor: BMAP_ANCHOR_TOP_RIGHT, //位置
+        offset: new BMap.Size(5, 5), //偏离值
+        scale: 0.8 //工具栏缩放比例
+      },
+      circleOptions: styleOptions, //圆的样式
+      polylineOptions: styleOptions, //线的样式
+      polygonOptions: styleOptions, //多边形的样式
+      rectangleOptions: styleOptions //矩形的样式
+    });
+    //添加鼠标绘制工具监听事件，用于获取绘制结果
+    drawingManager.addEventListener('overlaycomplete', overlaycomplete);
+  }
+</script>
